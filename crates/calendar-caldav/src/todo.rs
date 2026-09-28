@@ -189,9 +189,16 @@ fn extra_prop(prop: &icalendar::Property) -> crate::ExtraProp {
 }
 
 fn to_owned(component: &icalendar::parser::Component) -> icalendar::Todo {
+    // Only generic property access is used (collect_categories); CATEGORIES
+    // goes through the multi bucket so repeated lines don't collapse — same
+    // class of bug as to_owned_event's append_property overwrite.
     let mut todo = icalendar::Todo::new();
     for prop in &component.properties {
-        todo.append_property(prop.clone());
+        if prop.name.as_ref() == "CATEGORIES" {
+            todo.append_multi_property(prop.clone());
+        } else {
+            todo.append_property(prop.clone());
+        }
     }
     todo
 }
@@ -486,7 +493,9 @@ pub fn todos_to_ics(rows: &[TaskExportRow]) -> String {
             if let Some(rsvp) = attendee.rsvp {
                 prop.add_parameter("RSVP", if rsvp { "TRUE" } else { "FALSE" });
             }
-            td.append_property(prop);
+            // Multi-instance property: the single-property map would keep
+            // only the last attendee.
+            td.append_multi_property(prop);
         }
         for alarm in alarms {
             let valarm = build_alarm(alarm, &task.summary);
@@ -503,7 +512,8 @@ pub fn todos_to_ics(rows: &[TaskExportRow]) -> String {
             for (key, value) in &prop.params {
                 wire.add_parameter(key, value);
             }
-            td.append_property(wire);
+            // Repeated extra props (X-*/IANA) must survive the wire.
+            td.append_multi_property(wire);
         }
         calendar.push(td);
     }
@@ -604,7 +614,8 @@ fn build_alarm(alarm: &TaskAlarmRow, summary: &str) -> icalendar::Alarm {
             .remove_property("ACTION")
             .add_property("ACTION", "EMAIL");
         for recipient in &alarm.recipient_emails {
-            valarm.append_property(icalendar::Property::new(
+            // Multi-instance property; the map would keep only the last.
+            valarm.append_multi_property(icalendar::Property::new(
                 "ATTENDEE",
                 format!("mailto:{recipient}"),
             ));

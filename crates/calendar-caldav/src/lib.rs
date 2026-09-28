@@ -410,7 +410,9 @@ pub fn events_to_ics(rows: &[ExportRow]) -> String {
             if let Some(rsvp) = attendee.rsvp {
                 prop.add_parameter("RSVP", if rsvp { "TRUE" } else { "FALSE" });
             }
-            ev.append_property(prop);
+            // Multi-instance property: the single-property map would keep
+            // only the last attendee (same collapse the PUT path had).
+            ev.append_multi_property(prop);
         }
         for alarm in alarms {
             serialize_alarm(&mut ev, alarm, event);
@@ -484,7 +486,8 @@ fn serialize_alarm(
             .remove_property("ACTION")
             .add_property("ACTION", "EMAIL");
         for recipient in &alarm.recipient_emails {
-            valarm.append_property(icalendar::Property::new(
+            // Multi-instance property; the map would keep only the last.
+            valarm.append_multi_property(icalendar::Property::new(
                 "ATTENDEE",
                 format!("mailto:{recipient}"),
             ));
@@ -944,11 +947,15 @@ fn parse_utc_offset(value: &str) -> Result<i32, IcsError> {
 /// nested VALARM components (the 0.17 crate parser is never called directly —
 /// unfolding happens first).
 fn to_owned_event(component: &icalendar::parser::Component<'_>) -> icalendar::Event {
-    let mut event = icalendar::Event::new();
-    for prop in &component.properties {
-        event.append_property(prop.clone());
+    // The crate's own classification: RFC 5545 multi-instance property types
+    // (ATTENDEE, RDATE, EXDATE, CATEGORIES, …) land in multi_properties
+    // instead of overwriting the single-property map. Appending every raw
+    // property by hand collapsed repeated ATTENDEE/RDATE/EXDATE/CATEGORIES
+    // lines to the last one — a PUT stored one attendee, silently.
+    match icalendar::CalendarComponent::from(component.clone()) {
+        icalendar::CalendarComponent::Event(event) => event,
+        _ => unreachable!("parse_calendar_parts filters non-VEVENT components"),
     }
-    event
 }
 
 fn parse_event(
@@ -1429,6 +1436,40 @@ END:VCALENDAR\r\n";
     }
 
     #[test]
+    fn repeated_multi_instance_properties_survive() {
+        // Regression: appending every raw property through the single-property
+        // map collapsed repeated ATTENDEE/RDATE/EXDATE/CATEGORIES lines to the
+        // last one, so a CalDAV PUT stored one attendee, silently.
+        let ics = "BEGIN:VCALENDAR\r\n\
+VERSION:2.0\r\n\
+PRODID:-//t//EN\r\n\
+BEGIN:VEVENT\r\n\
+UID:multi-1\r\n\
+DTSTART:20260928T100000Z\r\n\
+DTEND:20260928T110000Z\r\n\
+SUMMARY:Multi\r\n\
+ATTENDEE;CN=A One:mailto:a@test.local\r\n\
+ATTENDEE;CN=B Two:mailto:b@test.local\r\n\
+ATTENDEE;CN=C Three:mailto:c@test.local\r\n\
+CATEGORIES:one\r\n\
+CATEGORIES:two,three\r\n\
+EXDATE:20260929T100000Z\r\n\
+EXDATE:20260930T100000Z\r\n\
+END:VEVENT\r\n\
+END:VCALENDAR\r\n";
+        let ev = &parse_ics(ics).unwrap()[0];
+        let emails: Vec<_> = ev
+            .attendees
+            .iter()
+            .filter_map(|a| a.email.as_deref())
+            .collect();
+        assert_eq!(emails, ["a@test.local", "b@test.local", "c@test.local"]);
+        assert_eq!(ev.attendees[0].display_name.as_deref(), Some("A One"));
+        assert_eq!(ev.categories, ["one", "two", "three"]);
+        assert_eq!(ev.exdate.len(), 2);
+    }
+
+    #[test]
     fn sms_attendee_round_trips() {
         let mut attendee = sample_attendee();
         attendee.email = None;
@@ -1454,6 +1495,45 @@ END:VCALENDAR\r\n";
             parsed[0].attendees[0].telephone.as_deref(),
             Some("+13216166280")
         );
+    }
+
+    #[test]
+    fn serialization_keeps_every_attendee() {
+        // Regression: the serialize side appended each ATTENDEE through the
+        // single-property map, so a stored 3-attendee event came back with
+        // only the last one.
+        let attendee = |email: &str, name: &str| {
+            let mut row = sample_attendee();
+            row.email = Some(email.into());
+            row.display_name = Some(name.into());
+            row
+        };
+        let rows = [ExportRow {
+            vtimezones: vec![],
+            event: sample_event_row(),
+            attendees: vec![
+                attendee("a@test.local", "A One"),
+                attendee("b@test.local", "B Two"),
+                attendee("c@test.local", "C Three"),
+            ],
+            alarms: vec![],
+            location: None,
+        }];
+        let ics = events_to_ics(&rows);
+        let count = ics.matches("ATTENDEE").count();
+        assert_eq!(count, 3, "expected 3 ATTENDEE lines in:\n{}", ics);
+        // Values may be RFC-folded across lines; unfold before value checks.
+        let unfolded = ics.replace("\r\n ", "");
+        for email in ["a@test.local", "b@test.local", "c@test.local"] {
+            assert!(
+                unfolded.contains(&format!("mailto:{}", email)),
+                "missing {} in:\n{}",
+                email,
+                ics
+            );
+        }
+        // Round-trip through the parser too.
+        assert_eq!(parse_ics(&ics).unwrap()[0].attendees.len(), 3);
     }
 
     #[test]

@@ -105,9 +105,15 @@ fn extra_prop(prop: &icalendar::Property) -> crate::ExtraProp {
 
 fn to_owned(component: &icalendar::parser::Component) -> icalendar::Todo {
     // Any component shell works: only the generic property access is used.
+    // CATEGORIES goes through the multi bucket so repeated lines don't
+    // collapse — same class of bug as to_owned_event's overwrite.
     let mut todo = icalendar::Todo::new();
     for prop in &component.properties {
-        todo.append_property(prop.clone());
+        if prop.name.as_ref() == "CATEGORIES" {
+            todo.append_multi_property(prop.clone());
+        } else {
+            todo.append_property(prop.clone());
+        }
     }
     todo
 }
@@ -218,7 +224,8 @@ pub fn journal_to_ics(journal: &JournalRow) -> String {
         for (key, value) in &prop.params {
             wire.add_parameter(key, value);
         }
-        jr.append_property(wire);
+        // Repeated extra props (X-*/IANA) must survive the wire.
+        jr.append_multi_property(wire);
     }
     // icalendar has no VJOURNAL component; the shell name is the only
     // difference from VTODO on the wire. Wrap in the VCALENDAR shell the
