@@ -266,36 +266,16 @@
       // ponytail: the three-way series dialog (this / this-and-following /
       // all) replaced the whole-series-only shortcut; exception rows (their
       // own RECURRENCE-ID override) and single events still edit directly.
+      // Single-click opens the detail modal via the plugin's info window;
+      // dblclick and the modal's pen/trash route through beginEdit/
+      // beginDelete here.
       onEdit: function (appointment) {
-        if (state.currentCalendar && state.currentCalendar.readOnly) { return; }
-        var ev = seriesEvent(appointment);
-        if (!ev) { return; }
-        if (ev.rrule && !ev.master_event_id) {
-          seriesDialog('Edit "' + (ev.summary || 'this event') + '"').done(function (choice) {
-            if (choice === 'this') { openEventModal('occurrence', ev); }
-            else if (choice === 'following') { openEventModal('split', ev); }
-            else if (choice === 'all') { openEventModal('edit', ev); }
-          });
-          return;
-        }
-        openEventModal('edit', ev);
+        beginEdit(seriesEvent(appointment));
       },
       onDelete: function (appointment) {
-        if (state.currentCalendar && state.currentCalendar.readOnly) { return; }
-        var ev = seriesEvent(appointment);
-        if (!ev) { return; }
-        if (ev.rrule && !ev.master_event_id) {
-          seriesDialog('Delete "' + (ev.summary || 'this event') + '"?').done(function (choice) {
-            if (choice === 'this') { cancelOccurrence(ev); }
-            else if (choice === 'following') { truncateSeries(ev); }
-            else if (choice === 'all') { deleteEvent(ev.id, ev.etag); }
-          });
-          return;
-        }
-        confirmDialog('Delete "' + (ev.summary || 'this event') + '"?').done(function () {
-          deleteEvent(ev.id, ev.etag);
-        });
+        beginDelete(seriesEvent(appointment));
       },
+      formatter: { window: formatEventWindow },
     });
     startAmPmObserver();
   }
@@ -588,6 +568,11 @@
       // eventCache entry (keyed by that id) holds whichever occurrence
       // happened to load last — the pill must carry its own.
       _occ: occurrence,
+      // bs-calendar's info-window buttons key off these; the flag must match
+      // beginEdit/beginDelete's click-time guard (the SELECTED view is
+      // read-only for subscribed and unified calendars), not the owning one.
+      editable: !!(state.currentCalendar && !state.currentCalendar.readOnly),
+      deleteable: !!(state.currentCalendar && !state.currentCalendar.readOnly),
     };
   }
 
@@ -1189,6 +1174,177 @@
       deleteEvent(state.editingEventId, state.editingEtag);
     });
   });
+
+  // ============ event detail (view-first) modal ============
+  // The edit/delete flows themselves live above (openEventModal, deleteEvent,
+  // cancelOccurrence, truncateSeries); these two wrappers are what both the
+  // grid handlers and the detail modal's buttons call.
+  function beginEdit(ev) {
+    if (!ev || (state.currentCalendar && state.currentCalendar.readOnly)) { return; }
+    if (ev.rrule && !ev.master_event_id) {
+      seriesDialog('Edit "' + (ev.summary || 'this event') + '"').done(function (choice) {
+        if (choice === 'this') { openEventModal('occurrence', ev); }
+        else if (choice === 'following') { openEventModal('split', ev); }
+        else if (choice === 'all') { openEventModal('edit', ev); }
+      });
+      return;
+    }
+    openEventModal('edit', ev);
+  }
+
+  function beginDelete(ev) {
+    if (!ev || (state.currentCalendar && state.currentCalendar.readOnly)) { return; }
+    if (ev.rrule && !ev.master_event_id) {
+      seriesDialog('Delete "' + (ev.summary || 'this event') + '"?').done(function (choice) {
+        if (choice === 'this') { cancelOccurrence(ev); }
+        else if (choice === 'following') { truncateSeries(ev); }
+        else if (choice === 'all') { deleteEvent(ev.id, ev.etag); }
+      });
+      return;
+    }
+    confirmDialog('Delete "' + (ev.summary || 'this event') + '"?').done(function () {
+      deleteEvent(ev.id, ev.etag);
+    });
+  }
+
+  // partstat -> badge (color, label); unknown values render no badge.
+  var PARTSTAT_BADGE = {
+    accepted: ['success', 'Accepted'],
+    declined: ['danger', 'Declined'],
+    tentative: ['warning', 'Tentative'],
+    'needs-action': ['secondary', 'Needs action'],
+  };
+
+  function describeWhen(ev) {
+    var tz = ev.tzid ? ' (' + ev.tzid + ')' : '';
+    if (ev.start_date) {
+      var s = new Date(ev.start_date + 'T00:00:00').toLocaleDateString();
+      if (ev.end_date && ev.end_date !== ev.start_date) {
+        s += ' – ' + new Date(ev.end_date + 'T00:00:00').toLocaleDateString();
+      }
+      return s + ' · all day';
+    }
+    var start = new Date(ev.starts_at);
+    var text = start.toLocaleString();
+    var end = ev.ends_at ? new Date(ev.ends_at) : null;
+    if (end) {
+      text += ' – ' + (end.toDateString() === start.toDateString()
+        ? end.toLocaleTimeString() : end.toLocaleString());
+    }
+    return text + tz;
+  }
+
+  // Human text for the simple FREQ/INTERVAL/UNTIL rules the picker owns; a
+  // richer rule (BYDAY, COUNT, …) shows the raw RRULE rather than mangle it.
+  function describeRrule(rrule) {
+    var parts = {};
+    rrule.split(';').forEach(function (p) {
+      var kv = p.split('=');
+      parts[kv[0]] = kv[1];
+    });
+    var freq = { DAILY: 'Daily', WEEKLY: 'Weekly', MONTHLY: 'Monthly', YEARLY: 'Yearly' }[parts.FREQ];
+    if (!freq) { return 'Repeats (' + rrule + ')'; }
+    var text = freq;
+    var interval = parseInt(parts.INTERVAL, 10);
+    if (interval > 1) { text += ' (every ' + interval + ')'; }
+    if (parts.UNTIL) { text += ', until ' + parts.UNTIL.slice(0, 8).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'); }
+    return text;
+  }
+
+  // Single click on a pill: bs-calendar awaits this formatter and fills
+  // #wcCalendarInfoWindowModal's .modal-appointment-content with the result,
+  // then injects its own edit/delete/close buttons (gated on the
+  // appointment's editable/deleteable flags, set in toAppointment). The grid
+  // feed sends no attendees/attachment rows, so fetch the full event first —
+  // a subscribed calendar can 403 here; the grid copy is the fallback.
+  async function formatEventWindow(appt) {
+    var ev = appt && state.eventCache[appt.id];
+    if (!ev) { return $('<div class="h5">').text(appt ? appt.title : '')[0].outerHTML; }
+    var base = '/api/events/' + ev.id;
+    var fetched = await Promise.all([
+      $.getJSON(base).catch(function () { return null; }),
+      $.getJSON('/api/calendars/' + ev.calendar_id + '/events/' + ev.id + '/attachments')
+        .catch(function () { return null; }),
+    ]);
+    if (fetched[0]) { ev = $.extend({}, ev, fetched[0]); }
+    var $root = $('<div>');
+    $root.append($('<div class="h5">').text(ev.summary || '(untitled)'));
+    $root.append($('<div class="small text-body-secondary mb-2">').text(describeWhen(ev)));
+    var rec = ev.rrule ? describeRrule(ev.rrule) : '';
+    // Occurrence line only means something on a series: a plain event's
+    // slot already IS the "when" line above.
+    if (ev.rrule && appt._occ) {
+      rec += (rec ? ' — ' : '') + 'this occurrence: ' + (appt._occ.kind === 'timed'
+        ? new Date(appt._occ.at).toLocaleString()
+        : new Date(appt._occ.date + 'T00:00:00').toLocaleDateString());
+    }
+    if (rec) { $root.append($('<div class="small text-body-secondary mb-2">').text(rec)); }
+    var $badges = $('<div class="mb-2">');
+    var badge = function (text, style) {
+      $badges.append($('<span class="badge me-1">').addClass(style).text(text));
+    };
+    var status = (ev.status || '').toLowerCase();
+    if (status === 'cancelled') { badge('Cancelled', 'bg-danger-subtle text-danger-emphasis'); }
+    else if (status === 'tentative') { badge('Tentative', 'bg-warning-subtle text-warning-emphasis'); }
+    else if (status === 'confirmed') { badge('Confirmed', 'bg-success-subtle text-success-emphasis'); }
+    if (ev.priority) { badge('Priority ' + ev.priority, 'bg-secondary-subtle text-body-emphasis'); }
+    if ((ev.transp || '').toLowerCase() === 'transparent') { badge('Free', 'bg-secondary-subtle text-body-emphasis'); }
+    (ev.category_details || []).forEach(function (c) {
+      $badges.append($('<span class="badge me-1 text-white">')
+        .css('background-color', CATEGORY_HEX[c.color] || '#6c757d')
+        .text(c.name));
+    });
+    if ($badges.children().length) { $root.append($badges); }
+    var loc = ev.location || {};
+    var locText = locationDisplayText(loc);
+    if (locText) {
+      var $loc = $('<div class="mb-2">').append($('<i class="bi bi-geo-alt me-1" aria-hidden="true">'), locText);
+      if (loc.website) { $loc.append(' · ', $('<a target="_blank" rel="noopener">').attr('href', loc.website).text('website')); }
+      if (loc.phone) { $loc.append(' · ', $('<a>').attr('href', 'tel:' + loc.phone).text(loc.phone)); }
+      $root.append($loc);
+    }
+    if (ev.organizer_email) {
+      $root.append($('<div class="mb-2">').append(
+        $('<i class="bi bi-person me-1" aria-hidden="true">'), 'Organizer: ',
+        $('<span>').text(ev.organizer_name ? ev.organizer_name + ' <' + ev.organizer_email + '>'
+          : ev.organizer_email)));
+    }
+    if (ev.url) {
+      $root.append($('<div class="mb-2">').append(
+        $('<i class="bi bi-link-45deg me-1" aria-hidden="true">'),
+        $('<a target="_blank" rel="noopener">').attr('href', ev.url).text(ev.url)));
+    }
+    var attendees = (fetched[0] && fetched[0].attendees) || [];
+    if (attendees.length) {
+      var list = $('<ul class="list-group list-group-flush mb-2">');
+      attendees.forEach(function (a) {
+        var reach = a.email || a.telephone;
+        var item = $('<li class="list-group-item d-flex justify-content-between align-items-center px-0 py-1">')
+          .append($('<span>').text(a.display_name ? a.display_name + ' <' + reach + '>' : reach));
+        var ps = PARTSTAT_BADGE[(a.partstat || '').toLowerCase()];
+        if (ps) {
+          item.append($('<span class="badge">')
+            .addClass('bg-' + ps[0] + '-subtle text-' + ps[0] + '-emphasis').text(ps[1]));
+        }
+        list.append(item);
+      });
+      $root.append($('<div class="mb-2">').append('<div class="form-label mb-0">Attendees</div>', list));
+    }
+    if (ev.description_html) { $root.append($('<div class="mb-2">').html(ev.description_html)); }
+    else if (ev.description_text) { $root.append($('<div class="mb-2">').text(ev.description_text)); }
+    var rows = fetched[1] || [];
+    if (rows.length) {
+      var attList = $('<ul class="list-group list-group-flush mb-2">');
+      rows.forEach(function (a) {
+        attList.append($('<li class="list-group-item px-0 py-1">').append(
+          $('<a target="_blank" rel="noopener">').attr('href', '/api/attachments/' + a.id)
+            .text(a.filename + ' (' + formatBytes(a.byte_size) + ')')));
+      });
+      $root.append($('<div class="mb-2">').append('<div class="form-label mb-0">Attachments</div>', attList));
+    }
+    $root.append($('<div class="small text-body-secondary">').text('Updated ' + new Date(ev.updated_at).toLocaleString()));
+    return $root.html();
+  }
 
   // ============ sharing / ACL ============
   function renderAcl() {

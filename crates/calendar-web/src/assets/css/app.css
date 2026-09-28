@@ -266,3 +266,23 @@ aside.border-end {
 .ev-lock {
   margin-right: 0.25rem;
 }
+/* Event detail (bs-calendar single-click info window). The plugin creates
+   and disposes this modal itself and pins it next to the pill by animating
+   top/left inline; override that so it renders as a plain vertically
+   centered modal instead. */
+#wcCalendarInfoWindowModal.show {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+#wcCalendarInfoWindowModal .modal-dialog {
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  margin: 0;
+  /* the plugin sets min-width/max-height inline on its own dialog */
+  min-width: 0 !important;
+  width: min(480px, calc(100vw - 2rem)) !important;
+  max-height: min(640px, calc(100% - 2rem)) !important;
+}
