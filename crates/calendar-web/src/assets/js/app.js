@@ -1178,18 +1178,26 @@
   // ============ event detail (view-first) modal ============
   // The edit/delete flows themselves live above (openEventModal, deleteEvent,
   // cancelOccurrence, truncateSeries); these two wrappers are what both the
-  // grid handlers and the detail modal's buttons call.
+  // grid handlers and the info modal's buttons call.
   function beginEdit(ev) {
     if (!ev || (state.currentCalendar && state.currentCalendar.readOnly)) { return; }
-    if (ev.rrule && !ev.master_event_id) {
-      seriesDialog('Edit "' + (ev.summary || 'this event') + '"').done(function (choice) {
-        if (choice === 'this') { openEventModal('occurrence', ev); }
-        else if (choice === 'following') { openEventModal('split', ev); }
-        else if (choice === 'all') { openEventModal('edit', ev); }
-      });
-      return;
-    }
-    openEventModal('edit', ev);
+    var go = function (full) {
+      if (full && full.id) { state.eventCache[full.id] = full; }
+      var target = ev._occ ? $.extend({}, full || ev, { _occ: ev._occ }) : (full || ev);
+      if (target.rrule && !target.master_event_id) {
+        seriesDialog('Edit "' + (target.summary || 'this event') + '"').done(function (choice) {
+          if (choice === 'this') { openEventModal('occurrence', target); }
+          else if (choice === 'following') { openEventModal('split', target); }
+          else if (choice === 'all') { openEventModal('edit', target); }
+        });
+        return;
+      }
+      openEventModal('edit', target);
+    };
+    // The grid occurrences feed omits attendees; PATCH would then drop them.
+    // Fetch the full event first. Silent failure (stale pill): open the
+    // editor with what the grid had.
+    $.getJSON('/api/events/' + ev.id).then(function (full) { go(full); }, function () { go(null); });
   }
 
   function beginDelete(ev) {
