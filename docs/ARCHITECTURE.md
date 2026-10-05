@@ -97,6 +97,7 @@ Durable jobs live in PostgreSQL. Workers run in-process.
 Scheduled jobs use `run_at`.
 Leased jobs use `locked_until` and worker identity.
 Retries use exponential backoff with a maximum.
+Self-rescheduling chains (alarm_scan/notify_send, ics_sync, retention_purge) must enqueue through `db::jobs::enqueue_unless_pending` — at most one unfinished job per recurring type is allowed to exist. Unconditional re-enqueue multiplies chains exponentially.
 
 ## Security boundaries
 

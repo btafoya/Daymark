@@ -254,7 +254,7 @@ calendar-server create-admin <username> <email> <password>
 
 ### Web UI
 
-Open `http://<BIND_ADDR>/` (redirects to `/login` if unauthenticated). Register an account, create a calendar, and use the built-in week-view calendar to add events. The calendar sidebar covers the ICS lifecycle too: the **+/edit** dialog takes a remote `.ics` URL to subscribe, and the **import/export** buttons in the tab bar upload or download the selected calendar's `.ics`.
+Open `http://<BIND_ADDR>/` (redirects to `/login` if unauthenticated). Register an account, create a calendar, and use the built-in week-view calendar to add events. The calendar sidebar covers the ICS lifecycle too: the **+/edit** dialog takes a remote `.ics` URL to subscribe or an `.ics` file to import on creation, and the **import/export** buttons in the tab bar upload or download the selected calendar's `.ics`. Clicking a calendar pill opens an event detail modal; its edit action loads the full event before opening the editor.
 
 - **Account** (nav bar, every signed-in user) — change your password (this revokes every other live session), turn off email/SMS/push reminders if you don't want them, and enable Web Push on the current device.
 - **Tasks** (nav bar) — VTODO to-do lists with due dates, priority, recurrence, and completion, in both list and web form.
@@ -287,7 +287,7 @@ Per-client setup guides (untested-status caveats included):
 
 ### Client compatibility
 
-Real-device interoperability: DAVx⁵ (events and contacts) and a CalDAV-consuming application run against a production instance, and Thunderbird 153 passed a full guided interop session (events, recurrence exceptions, tasks, journals, cross-calendar moves); see [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for the recorded configurations — the matrix grows as testing happens, and [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) is also the test plan for what isn't recorded yet. Protocol-level behavior — discovery, CRUD, `calendar-query`/`calendar-multiget`/`sync-collection`/`free-busy-query` REPORTs, ETag handling — is covered end-to-end by [`tests/interop/run.sh`](tests/interop/run.sh). Interoperability testing with a real client is a valued contribution category; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Real-device interoperability: DAVx⁵ (events and contacts) and a CalDAV-consuming application run against a production instance, and Thunderbird 153 passed a full guided interop session (events, recurrence exceptions, tasks, journals, cross-calendar moves, CardDAV contacts); see [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for the recorded configurations — the matrix grows as testing happens, and [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) is also the test plan for what isn't recorded yet. Protocol-level behavior — discovery, CRUD, `calendar-query`/`calendar-multiget`/`sync-collection`/`free-busy-query` REPORTs, ETag handling — is covered end-to-end by [`tests/interop/run.sh`](tests/interop/run.sh). Interoperability testing with a real client is a valued contribution category; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Authenticate with a **CalDAV app password**, not your login password — create one from the web UI or the API:
 
