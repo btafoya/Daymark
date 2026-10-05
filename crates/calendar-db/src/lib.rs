@@ -23,6 +23,9 @@ use uuid::Uuid;
 pub async fn connect(database_url: &str, max_connections: u32) -> Result<PgPool, sqlx::Error> {
     PgPoolOptions::new()
         .max_connections(max_connections)
+        // Recycle connections so cached prepared plans for `SELECT *` don't stay
+        // stale ("cached plan must not change result type") after a schema change.
+        .max_lifetime(std::time::Duration::from_secs(600))
         .connect(database_url)
         .await
 }
