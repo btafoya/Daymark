@@ -32,6 +32,10 @@ Daymark speaks standard CalDAV and CardDAV (RFC 4791 / RFC 6352) and exposes a n
 
 Calendar and contact infrastructure without deploying a groupware suite.
 
+> **A note from the developer:** v1.0.0 is Daymark's first stable release, and it has been quietly running my own calendars in production without a single problem. It's still young software, and I count on real-world use to shape what comes next — so if you hit anything odd, or there's a feature you'd like to see, please open an issue at [github.com/btafoya/Daymark/issues](https://github.com/btafoya/Daymark/issues).
+>
+> — Brian
+
 ```text
                     Internet
                        │
