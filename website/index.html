@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Daymark — self-hosted calendar &amp; contacts server</title>
+  <meta name="description" content="A standards-first, self-hosted CalDAV/CardDAV calendar and contacts server. One Rust binary, PostgreSQL, OpenAPI 3.1 API, embedded web UI.">
+  <link rel="icon" href="assets/logo.png">
+  <link rel="stylesheet" href="css/bootstrap.min.css">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+  <!-- Hero -->
+  <section class="hero text-center">
+    <div class="container">
+      <img class="logo" src="assets/logo-horizontal.png" alt="Daymark">
+      <h1 class="display-6">A standards-first, self-hosted calendar &amp; contacts server</h1>
+      <p class="lead">Daymark speaks CalDAV and CardDAV natively and exposes a normalized OpenAPI domain model for everything else. One Rust binary, one database. No Redis, no queue service, no data directory.</p>
+      <div class="d-flex justify-content-center gap-2 flex-wrap mt-4">
+        <a class="btn btn-accent btn-lg" href="https://github.com/btafoya/Daymark">View on GitHub</a>
+        <a class="btn btn-outline-accent btn-lg" href="https://github.com/btafoya/Daymark/releases/latest">Download v1.0.0</a>
+      </div>
+      <p class="platform-badges mt-3">CalDAV &middot; CardDAV &middot; OpenAPI 3.1 &middot; single Rust binary &middot; PostgreSQL &middot; MIT</p>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section" id="features">
+    <div class="container">
+      <h2 class="text-center section-title">Everything a calendar server should be</h2>
+      <p class="text-center section-sub">Full-protocol interoperability, a real database, and a programmable API — without deploying a groupware suite.</p>
+      <div class="row g-4 row-cols-1 row-cols-md-2 row-cols-lg-3">
+        <div class="col"><div class="feature-card"><div class="icon">&#9878;</div><h3>Standards first</h3><p>CalDAV (RFC 4791) and CardDAV (RFC 6352) with discovery, CRUD, sync-token REPORTs and free/busy — for events, tasks and journals. Client-tested: Thunderbird, DAVx⁵, Apple.</p></div></div>
+        <div class="col"><div class="feature-card"><div class="icon">&#128451;</div><h3>PostgreSQL-normalized</h3><p>iCalendar is a wire format, never the source of truth. Events, tasks, journals, contacts and attachments live in a normalized schema — searchable full-text, addressable through the API.</p></div></div>
+        <div class="col"><div class="feature-card"><div class="icon">&#128274;</div><h3>Modern auth</h3><p>Argon2id passwords, WebAuthn passkeys, TOTP 2FA with recovery codes, scoped API bearer tokens, CalDAV app passwords, login lockout.</p></div></div>
+        <div class="col"><div class="feature-card"><div class="icon">&#128101;</div><h3>Collaboration</h3><p>Calendar ACLs with multiple owners, revocable public share feeds, attendee invites by email or phone, iTIP invitations and iMIP replies.</p></div></div>
+        <div class="col"><div class="feature-card"><div class="icon">&#9200;</div><h3>Automation</h3><p>VALARM reminders over email, SMS and Web Push from a durable in-process job queue; a rules engine; HMAC-signed webhooks — all configured from the web UI.</p></div></div>
+        <div class="col"><div class="feature-card"><div class="icon">&#128187;</div><h3>Developer platform</h3><p>OpenAPI 3.1 served live at <a href="https://github.com/btafoya/Daymark"><code>/api/openapi.json</code></a>, scoped tokens, an embedded web UI with no CDN and no build step. MIT licensed.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Screenshots -->
+  <section class="section" id="screenshots">
+    <div class="container">
+      <h2 class="text-center section-title">Have a look</h2>
+      <p class="text-center section-sub">The embedded web UI: calendar, tasks, contacts, and admin — vendored assets, no CDN.</p>
+      <div class="row g-4 row-cols-1 row-cols-md-2">
+        <div class="col"><figure class="shot"><img src="assets/screenshots/calendar.png" alt="Calendar month view"><figcaption>Calendar month view</figcaption></figure></div>
+        <div class="col"><figure class="shot"><img src="assets/screenshots/tasks.png" alt="Tasks"><figcaption>Tasks</figcaption></figure></div>
+        <div class="col"><figure class="shot"><img src="assets/screenshots/contacts.png" alt="Contacts"><figcaption>Contacts</figcaption></figure></div>
+        <div class="col"><figure class="shot"><img src="assets/screenshots/admin.png" alt="Admin and audit log"><figcaption>Admin &amp; audit log</figcaption></figure></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install -->
+  <section class="section" id="install">
+    <div class="container">
+      <h2 class="text-center section-title">Get up and running</h2>
+      <p class="text-center section-sub">One binary, one empty PostgreSQL database. Migrations apply on startup.</p>
+      <div class="row g-4 row-cols-1 row-cols-lg-2">
+        <div class="col">
+          <div class="install-step">
+            <div class="step-label">Prebuilt binary (any Linux distro)</div>
+            <pre class="codebox"><code>tar xzf daymark-v*-x86_64-linux.tar.gz
+DATABASE_URL=postgres://user:pass@localhost/calendar \
+  BIND_ADDR=0.0.0.0:8080 ./daymark-server serve</code></pre>
+          </div>
+          <div class="install-step">
+            <div class="step-label">Or with Docker</div>
+            <pre class="codebox"><code>docker run -d --name daymark -p 8080:8080 \
+  -e DATABASE_URL=postgres://user:pass@host/calendar \
+  ghcr.io/btafoya/daymark:latest</code></pre>
+          </div>
+        </div>
+        <div class="col">
+          <div class="install-step">
+            <div class="step-label">Or bare-metal with systemd (Debian)</div>
+            <pre class="codebox"><code>git clone https://github.com/btafoya/Daymark.git &amp;&amp; cd Daymark
+sudo scripts/install.sh --with-postgres</code></pre>
+          </div>
+          <div class="install-step">
+            <div class="step-label">Create the first admin</div>
+            <pre class="codebox"><code>calendar-server create-admin admin you@example.com 'a-strong-password'</code></pre>
+          </div>
+        </div>
+      </div>
+      <p class="text-center mt-3">Full configuration reference and client setup guides in the <a href="https://github.com/btafoya/Daymark#readme">README</a>.</p>
+    </div>
+  </section>
+
+  <!-- Contact -->
+  <section class="section pb-5" id="contact">
+    <div class="container">
+      <h2 class="text-center section-title">Found something? Want something?</h2>
+      <p class="text-center section-sub">v1.0.0 is running in production without issue — and real-world use decides what comes next.</p>
+      <div class="d-flex justify-content-center gap-2 flex-wrap">
+        <a class="btn btn-accent" href="https://github.com/btafoya/Daymark/issues">Open an issue</a>
+        <a class="btn btn-outline-accent" href="https://github.com/btafoya/Daymark/security/policy">Report a security issue</a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="text-center">
+    <div class="container">
+      <a href="https://github.com/btafoya/Daymark">GitHub</a> &middot; <a href="https://github.com/btafoya/Daymark/releases">Releases</a> &middot;
+      <a href="https://github.com/btafoya/Daymark/blob/main/LICENSE">MIT License</a>
+    </div>
+  </footer>
+
+  <script src="js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

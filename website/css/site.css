@@ -1,0 +1,132 @@
+/* Daymark homepage — DevAid-style structure, own design. theme-1 teal accent. */
+:root {
+  --accent: #128f8f;
+  --accent-dark: #0d6e6e;
+  --ink: #2b3438;
+  --muted: #6f7f87;
+  --surface: #f2f5f6;
+  --panel: #ffffff;
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+a { color: var(--accent); }
+a:hover { color: var(--accent-dark); }
+
+.btn-accent {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-accent:hover {
+  background: var(--accent-dark);
+  color: #fff;
+}
+.btn-outline-accent {
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+.btn-outline-accent:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Hero */
+.hero {
+  background: #fff;
+  border-bottom: 1px solid #e3e8ea;
+  padding: 5rem 0 4rem;
+}
+.hero .logo {
+  max-height: 72px;
+  width: auto;
+  margin-bottom: 1.5rem;
+}
+.hero h1 {
+  font-weight: 700;
+}
+.hero p.lead {
+  color: var(--muted);
+  max-width: 44rem;
+  margin-inline: auto;
+}
+.hero .platform-badges {
+  color: var(--muted);
+  font-size: .95rem;
+}
+
+/* Sections */
+.section { padding: 4rem 0; }
+.section-title {
+  font-weight: 700;
+  margin-bottom: .25rem;
+}
+.section-sub { color: var(--muted); margin-bottom: 2.5rem; }
+
+/* Feature cards */
+.feature-card {
+  background: var(--panel);
+  border: 1px solid #e3e8ea;
+  border-radius: .75rem;
+  height: 100%;
+  padding: 1.5rem;
+}
+.feature-card .icon {
+  font-size: 1.75rem;
+  color: var(--accent);
+}
+.feature-card h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: .75rem 0 .5rem;
+}
+.feature-card p {
+  color: var(--muted);
+  font-size: .95rem;
+  margin: 0;
+}
+.feature-card a { color: inherit; text-decoration: none; }
+
+/* Screenshots */
+.shot {
+  background: var(--panel);
+  border: 1px solid #e3e8ea;
+  border-radius: .75rem;
+  overflow: hidden;
+  height: 100%;
+}
+.shot img { width: 100%; display: block; }
+.shot figcaption {
+  color: var(--muted);
+  font-size: .9rem;
+  padding: .75rem 1rem;
+}
+
+/* Install */
+.codebox {
+  background: #1d262b;
+  border-radius: .5rem;
+  color: #d8e0e3;
+  font-size: .9rem;
+  margin: 0;
+  overflow-x: auto;
+  padding: 1rem 1.25rem;
+}
+.codebox code { color: inherit; }
+.install-step { margin-bottom: 1rem; }
+.install-step .step-label {
+  color: var(--muted);
+  font-size: .9rem;
+  margin-bottom: .25rem;
+}
+
+/* Footer */
+footer {
+  border-top: 1px solid #e3e8ea;
+  color: var(--muted);
+  font-size: .9rem;
+  padding: 2rem 0;
+}
