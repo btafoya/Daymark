@@ -112,26 +112,20 @@ async fn execute(
             schedule_alarm_scan(pool, Utc::now() + Duration::minutes(1))
                 .await
                 .map_err(|e| e.to_string())?;
-            db::jobs::enqueue(
-                pool,
-                "notify_send",
-                serde_json::json!({}),
-                Some(Utc::now()),
-                0,
-            )
-            .await
-            .ok();
+            // One notify_send chain only: a pending/running one reschedules itself.
+            db::jobs::enqueue_unless_pending(pool, "notify_send", Utc::now(), None)
+                .await
+                .ok();
             Ok(())
         }
         "notify_send" => {
             notify_send(pool, crypto).await?;
             // Recurring 1-minute tick.
-            db::jobs::enqueue(
+            db::jobs::enqueue_unless_pending(
                 pool,
                 "notify_send",
-                serde_json::json!({}),
-                Some(Utc::now() + Duration::minutes(1)),
-                0,
+                Utc::now() + Duration::minutes(1),
+                Some(job.id),
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -1862,5 +1856,73 @@ mod tests {
             alarm_triggers(&scan, &resolver(), lookback, horizon),
             vec![timed("2026-01-15T09:45:00Z"), timed("2026-01-17T09:45:00Z"),]
         );
+    }
+
+    /// DB-backed; skips without DATABASE_URL (throwaway instance only: it
+    /// clears pending scan/send jobs).
+    async fn test_pool() -> Option<sqlx::PgPool> {
+        let url = std::env::var("DATABASE_URL")
+            .ok()
+            .filter(|u| !u.is_empty())?;
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+            .ok()?;
+        db::migrate(&pool).await.ok()?;
+        Some(pool)
+    }
+
+    async fn pending_notify_sends(pool: &sqlx::PgPool) -> Vec<Uuid> {
+        sqlx::query_scalar(
+            "SELECT id FROM durable_jobs
+             WHERE job_type = 'notify_send' AND completed_at IS NULL AND failed_at IS NULL",
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap()
+    }
+
+    /// Runs one job the way the worker loop does: execute, then complete.
+    async fn run_job(pool: &sqlx::PgPool, id: Uuid, job_type: &str) {
+        let job = db::jobs::JobRow {
+            id,
+            job_type: job_type.to_string(),
+            payload: serde_json::json!({}),
+            run_at: Utc::now(),
+            attempts: 0,
+            max_attempts: 5,
+        };
+        execute(pool, &job, 30, None).await.unwrap();
+        db::jobs::complete(pool, id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn notify_send_stays_a_single_chain() {
+        let Some(pool) = test_pool().await else {
+            return;
+        };
+        sqlx::query(
+            "DELETE FROM durable_jobs WHERE job_type IN ('notify_send', 'alarm_scan')
+             AND completed_at IS NULL AND failed_at IS NULL",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Every alarm_scan pass kicks notify_send; repeated passes must not
+        // start parallel chains.
+        for _ in 0..5 {
+            let scan = schedule_alarm_scan(&pool, Utc::now()).await.unwrap();
+            run_job(&pool, scan, "alarm_scan").await;
+        }
+        let pending = pending_notify_sends(&pool).await;
+        assert_eq!(pending.len(), 1, "alarm_scan fan-out: {pending:?}");
+
+        // notify_send reschedules itself; it must replace, not add.
+        for id in pending {
+            run_job(&pool, id, "notify_send").await;
+        }
+        assert_eq!(pending_notify_sends(&pool).await.len(), 1);
     }
 }

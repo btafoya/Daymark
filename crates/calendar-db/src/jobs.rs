@@ -30,6 +30,33 @@ pub async fn enqueue(
     Ok(id)
 }
 
+/// Enqueues `job_type` unless another unfinished job of that type exists
+/// (ignoring `except`, the caller's own running job). Returns whether a row
+/// was inserted. Keeps self-rescheduling chains from multiplying.
+pub async fn enqueue_unless_pending(
+    pool: &PgPool,
+    job_type: &str,
+    run_at: DateTime<Utc>,
+    except: Option<Uuid>,
+) -> Result<bool, DbError> {
+    let res = sqlx::query(
+        "INSERT INTO durable_jobs (id, job_type, run_at)
+         SELECT $1, $2, $3
+         WHERE NOT EXISTS (
+            SELECT 1 FROM durable_jobs
+            WHERE job_type = $2 AND completed_at IS NULL AND failed_at IS NULL
+              AND id IS DISTINCT FROM $4
+         )",
+    )
+    .bind(Uuid::new_v4())
+    .bind(job_type)
+    .bind(run_at)
+    .bind(except)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct JobRow {
     pub id: Uuid,
