@@ -415,7 +415,7 @@ dependencies = [
 
 [[package]]
 name = "calendar-auth"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -435,7 +435,7 @@ dependencies = [
 
 [[package]]
 name = "calendar-caldav"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -458,7 +458,7 @@ dependencies = [
 
 [[package]]
 name = "calendar-carddav"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bytes",
  "calendar-db",
@@ -474,7 +474,7 @@ dependencies = [
 
 [[package]]
 name = "calendar-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ammonia",
  "chrono",
@@ -487,7 +487,7 @@ dependencies = [
 
 [[package]]
 name = "calendar-db"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "calendar-auth",
@@ -504,7 +504,7 @@ dependencies = [
 
 [[package]]
 name = "calendar-notify"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -521,7 +521,7 @@ dependencies = [
 
 [[package]]
 name = "calendar-rules"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "serde",
@@ -532,7 +532,7 @@ dependencies = [
 
 [[package]]
 name = "calendar-server"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -571,7 +571,7 @@ dependencies = [
 
 [[package]]
 name = "calendar-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum",
  "http 1.5.0",
