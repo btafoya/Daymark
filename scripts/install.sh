@@ -112,6 +112,7 @@ esc() { printf "'%s'" "${1//\'/\'\\\'\'}"; }  # single-quote for safe sourcing
   [ -n "${WEBAUTHN_RP_ID:-}" ] && echo "WEBAUTHN_RP_ID=$(esc "$WEBAUTHN_RP_ID")"
   [ -n "${WEBAUTHN_ORIGIN:-}" ] && echo "WEBAUTHN_ORIGIN=$(esc "$WEBAUTHN_ORIGIN")"
   [ -n "${POSTMARK_INBOUND_SECRET:-}" ] && echo "POSTMARK_INBOUND_SECRET=$(esc "$POSTMARK_INBOUND_SECRET")"
+  [ -n "${GOOGLE_MAPS_API_KEY:-}" ] && echo "GOOGLE_MAPS_API_KEY=$(esc "$GOOGLE_MAPS_API_KEY")"
   true
 } >"$ENV_FILE"
 chmod 0600 "$ENV_FILE"
