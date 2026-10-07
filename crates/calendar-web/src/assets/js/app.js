@@ -479,17 +479,59 @@
   }
 
   // UTC ISO instant -> datetime-local value in the browser's local time zone.
-  function isoToLocalInput(iso) {
+  function isoToLocalInput(iso, tz) {
     if (!iso) { return ''; }
     if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) { return iso + 'T00:00'; }
     var d = new Date(iso);
+    if (tz) {
+      var p = tzWallParts(d.getTime(), tz);
+      return p.y + '-' + pad(p.mo) + '-' + pad(p.d) + 'T' + pad(p.h) + ':' + pad(p.mi);
+    }
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
       'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
-  // datetime-local value (local wall clock) -> UTC ISO instant for the API.
-  function localInputToIso(value) {
-    return value ? new Date(value).toISOString() : null;
+  // Wall-clock fields of an instant in an IANA zone.
+  function tzWallParts(ms, tz) {
+    var o = {};
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric',
+      day: 'numeric', hour: 'numeric', minute: 'numeric',
+    }).formatToParts(new Date(ms)).forEach(function (x) { o[x.type] = parseInt(x.value, 10); });
+    return { y: o.year, mo: o.month, d: o.day, h: o.hour, mi: o.minute };
+  }
+
+  // datetime-local value (wall clock in `tz`, else the browser zone) -> UTC ISO instant.
+  function localInputToIso(value, tz) {
+    if (!value) { return null; }
+    if (!tz) { return new Date(value).toISOString(); }
+    var m = value.match(/^(\d+)-(\d+)-(\d+)T(\d+):(\d+)/);
+    var asUtc = Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5]);
+    // Two passes settle the offset across a DST boundary.
+    var guess = asUtc;
+    for (var i = 0; i < 2; i++) {
+      var p = tzWallParts(guess, tz);
+      guess += asUtc - Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi);
+    }
+    return new Date(guess).toISOString();
+  }
+
+  var browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  function populateTzSelect() {
+    var zones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
+    if (zones.indexOf('UTC') < 0) { zones.push('UTC'); }
+    var sel = $('#ev-tz').empty();
+    zones.forEach(function (z) { sel.append($('<option>').val(z).text(z.replace(/_/g, ' '))); });
+  }
+  // Unknown zone (e.g. a Windows/legacy TZID from CalDAV) gets its own option
+  // so saving doesn't silently rewrite it.
+  function setTzSelect(tz) {
+    tz = tz || browserTz;
+    var sel = $('#ev-tz');
+    if (!sel.find('option').filter(function () { return this.value === tz; }).length) {
+      sel.append($('<option>').val(tz).text(tz));
+    }
+    sel.val(tz);
   }
 
   // ============ AM/PM start/end time controls ============
@@ -527,6 +569,8 @@
   }
 
   populateTimeSelectOptions();
+  populateTzSelect();
+  $('#ev-all-day').on('change', function () { $('#ev-tz-row').prop('hidden', this.checked); });
   ['start', 'end'].forEach(function (prefix) {
     $('#ev-' + prefix + '-date, #ev-' + prefix + '-hour, #ev-' + prefix + '-min, #ev-' + prefix + '-ampm')
       .on('change', function () { syncTimeControls(prefix); });
@@ -957,13 +1001,16 @@
       $('#ev-title').val(payload.summary || '');
       // The occurrence's own slot (the clicked day), not the series DTSTART.
       var slot = mode === 'edit' ? null : occurrenceSlot(payload, payload._occ);
+      var tz = payload.tzid || null;
       setTimeControls('start', slot
-        ? isoToLocalInput(slot.start)
-        : isoToLocalInput(payload.starts_at || payload.start_date));
+        ? isoToLocalInput(slot.start, tz)
+        : isoToLocalInput(payload.starts_at || payload.start_date, tz));
       setTimeControls('end', slot
-        ? isoToLocalInput(slot.end)
-        : isoToLocalInput(payload.ends_at || payload.end_date));
+        ? isoToLocalInput(slot.end, tz)
+        : isoToLocalInput(payload.ends_at || payload.end_date, tz));
+      setTzSelect(tz);
       $('#ev-all-day').prop('checked', !!payload.all_day);
+      $('#ev-tz-row').prop('hidden', !!payload.all_day);
       $('#ev-url').val(payload.url || '');
       $('#ev-status').val(payload.status || '');
       $('#ev-class').val(payload.class || '');
@@ -998,6 +1045,8 @@
       applyRruleToForm(null);
       setTimeControls('start', payload.start || '');
       setTimeControls('end', payload.end || '');
+      setTzSelect(null);
+      $('#ev-tz-row').prop('hidden', false);
       $('#ev-desc').summernote('code', '');
     }
     renderAttendees();
@@ -1094,8 +1143,10 @@
       body.end_date = $('#ev-end').val().slice(0, 10);
     } else {
       body.all_day = false;
-      body.starts_at = localInputToIso($('#ev-start').val());
-      body.ends_at = localInputToIso($('#ev-end').val());
+      var tz = $('#ev-tz').val();
+      body.tzid = tz;
+      body.starts_at = localInputToIso($('#ev-start').val(), tz);
+      body.ends_at = localInputToIso($('#ev-end').val(), tz);
     }
     // An exception body carries no rule; a split body carries the rule the
     // continuation should use (omitted when the picker can't rebuild it —
@@ -1461,13 +1512,28 @@
     api('POST', '/api/calendars/' + state.currentCalendar.id + '/shares', { allows_caldav: allowsCaldav })
       .done(function (share) {
         var url = window.location.origin + '/share/' + share.token + '/calendar.ics';
-        Swal.fire({
+        Swal.fire($.extend({}, BUTTONS, {
           icon: 'info',
           title: 'Copy the link now — shown only once',
           input: 'text',
           inputValue: url,
-          didOpen: function (popup) { popup.querySelector('input').select(); },
-        });
+          inputAttributes: { readonly: true },
+          confirmButtonText: 'Copy',
+          showCancelButton: true,
+          cancelButtonText: 'Close',
+          didOpen: function (popup) {
+            BUTTONS.didOpen();
+            popup.querySelector('input').select();
+          },
+          // Stay open if the clipboard write fails (insecure context/denied).
+          preConfirm: function () {
+            return Promise.resolve().then(function () {
+              return navigator.clipboard.writeText(url);
+            }).catch(function () {
+              Swal.showValidationMessage('Copy blocked — select the text and press Ctrl+C.');
+            });
+          },
+        })).then(function (r) { if (r.isConfirmed) { toast('Link copied.'); } });
         loadShares();
       });
   }

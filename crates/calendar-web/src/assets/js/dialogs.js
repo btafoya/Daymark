@@ -18,7 +18,19 @@
     // modal (attachment rows, discard-changes) doesn't fight Bootstrap's
     // focus restore when it closes.
     returnFocus: false,
+    // ponytail: Bootstrap's focus trap yanks focus out of any SweetAlert
+    // input opened over a modal (can't select/copy/type). Pause it while the
+    // popup is open; _focustrap is private API, pinned by the vendored 5.3.3.
+    didOpen: function () { setModalTraps('deactivate'); },
+    willClose: function () { setModalTraps('activate'); },
   };
+
+  function setModalTraps(action) {
+    $('.modal.show').each(function () {
+      var m = bootstrap.Modal.getInstance(this);
+      if (m && m._focustrap) { m._focustrap[action](); }
+    });
+  }
   window.BUTTONS = BUTTONS;
 
   window.confirmDialog = function (message, options) {

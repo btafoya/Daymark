@@ -685,6 +685,8 @@ const APP_PAGE_HEAD: &str = concat!(
         <input class="form-check-input" type="checkbox" id="ev-all-day">
         <label class="form-check-label" for="ev-all-day">All day</label>
       </div>
+      <div class="mb-3" id="ev-tz-row"><label class="form-label" for="ev-tz">Time zone</label>
+        <select class="form-select" id="ev-tz"></select></div>
       <div class="row mb-3">
         <div class="col position-relative"><label class="form-label" for="ev-location">Location</label>
           <input class="form-control" id="ev-location" placeholder="Type a place or address" autocomplete="off">
