@@ -172,7 +172,7 @@ pub struct Config {
 
 impl Config {
     fn from_env() -> Result<Self> {
-        let env = |name: &str| std::env::var(name).ok();
+        let env = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
         Ok(Self {
             database_url: env("DATABASE_URL").context("DATABASE_URL is required")?,
             database_max_connections: env("DATABASE_MAX_CONNECTIONS")

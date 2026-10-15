@@ -23,6 +23,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # User config lives in .env (see .env.example); DATABASE_URL/BIND_ADDR
+    # below override the .env values because containers resolve Postgres by
+    # service name and must listen inside the compose network.
+    env_file:
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/calendar
       BIND_ADDR: 0.0.0.0:8080

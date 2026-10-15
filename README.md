@@ -135,7 +135,8 @@ MIT licensed.
 
 ## Requirements
 
-- **PostgreSQL 16+** — the only runtime dependency.
+- **PostgreSQL 16+** — the only runtime dependency. Provided automatically by the compose deployment below.
+- **Docker with Compose** — for the primary OCI-image path (x86-64).
 - **A stable x86-64 Linux** for the prebuilt binary (statically linked, works on any distro); other targets build from source.
 - **Rust** (stable toolchain, 2024 edition) and a Debian-family distro + systemd — only for the `scripts/install.sh` and build-from-source paths.
 
@@ -143,32 +144,35 @@ MIT licensed.
 
 | Path | When |
 |---|---|
-| **Prebuilt binary** | Any Linux distro, no Rust toolchain needed |
-| **OCI image** | Turnkey `docker compose up`, or standalone `docker run` against your existing PostgreSQL |
+| **OCI image (Compose)** | Turnkey `docker compose up` — Docker and PostgreSQL managed together |
+| **OCI image (standalone)** | `docker run` against your existing PostgreSQL |
+| **Prebuilt binary** | Any Linux distro, no Docker or Rust toolchain needed |
 | **systemd (Debian)** | Bare-metal or VM deployment, service managed by systemd |
 | **Build from source** | You manage the process yourself (or another supervisor) |
 
-### Prebuilt binary
+### OCI image — turnkey (recommended)
 
-Grab `daymark-server` from the [latest release](https://github.com/btafoya/Daymark/releases/latest) — a statically-linked musl binary; the only thing it talks to is PostgreSQL over TCP.
-
-```bash
-tar xzf daymark-v*-x86_64-linux.tar.gz
-DATABASE_URL=postgres://user:pass@localhost/calendar BIND_ADDR=0.0.0.0:8080 ./daymark-server serve
-```
-
-Migrations apply automatically on startup.
-
-### OCI image
-
-Turnkey — Daymark and PostgreSQL together, from the repo:
+Daymark and PostgreSQL together, from the repo:
 
 ```bash
-docker compose pull && docker compose up -d   # ghcr.io/btafoya/daymark:latest
-docker compose up -d --build                  # or build locally from source
+git clone https://github.com/btafoya/Daymark.git
+cd Daymark
+docker compose pull && docker compose up -d          # ghcr.io/btafoya/daymark:latest
+# or build the image locally from the same source:
+docker compose up -d --build
 ```
 
-Standalone — point it at your own PostgreSQL:
+App on `:8080`; Postgres is reachable only inside the compose network (its `127.0.0.1:5433` host mapping is a dev convenience). Set server configuration with a `.env` file next to `docker-compose.yml`: `cp .env.example .env` and edit (leave `DATABASE_URL`/`BIND_ADDR` alone — compose overrides them for the container; everything else passes through, e.g. `APP_ENCRYPTION_KEY`, `POSTMARK_INBOUND_SECRET`. See [Configuration](#configuration)).
+
+Migrations apply automatically on startup. Create the first admin and open `http://localhost:8080`:
+
+```bash
+docker compose exec daymark calendar-server create-admin <username> <email> <password>
+```
+
+### OCI image — standalone
+
+Point it at your own PostgreSQL:
 
 ```bash
 docker run -d --name daymark -p 8080:8080 \
@@ -176,7 +180,14 @@ docker run -d --name daymark -p 8080:8080 \
   ghcr.io/btafoya/daymark:latest
 ```
 
-App on `:8080`; Postgres is reachable only inside the compose network (its `127.0.0.1:5433` host mapping is a dev convenience). Docker is optional — the binary above runs directly on any Linux.
+### Prebuilt binary
+
+Grab `daymark-server` from the [latest release](https://github.com/btafoya/Daymark/releases/latest) — a statically-linked musl binary; the only thing it talks to is PostgreSQL over TCP. Prefer this over Docker when you don't want Docker on the host.
+
+```bash
+tar xzf daymark-v*-x86_64-linux.tar.gz
+DATABASE_URL=postgres://user:pass@localhost/calendar BIND_ADDR=0.0.0.0:8080 ./daymark-server serve
+```
 
 ### systemd (Debian-family distros)
 
@@ -201,7 +212,7 @@ The binary lands at `target/release/calendar-server`. Copy it wherever you deplo
 
 ### Database
 
-Create an empty PostgreSQL database for it:
+Create an empty PostgreSQL database for it (the compose deployment provisions its database automatically — this applies to the binary, systemd, and source paths):
 
 ```bash
 createdb calendar
