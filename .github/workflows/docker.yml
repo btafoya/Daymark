@@ -1,0 +1,20 @@
+name: Docker
+
+on:
+  push:
+    paths: ["Dockerfile", ".dockerignore", "docker-compose.yml", ".github/workflows/docker.yml"]
+  pull_request:
+    paths: ["Dockerfile", ".dockerignore", "docker-compose.yml", ".github/workflows/docker.yml"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

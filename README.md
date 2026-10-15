@@ -144,7 +144,7 @@ MIT licensed.
 | Path | When |
 |---|---|
 | **Prebuilt binary** | Any Linux distro, no Rust toolchain needed |
-| **OCI image** | `ghcr.io/btafoya/daymark`, works alongside your existing compose setup |
+| **OCI image** | Turnkey `docker compose up`, or standalone `docker run` against your existing PostgreSQL |
 | **systemd (Debian)** | Bare-metal or VM deployment, service managed by systemd |
 | **Build from source** | You manage the process yourself (or another supervisor) |
 
@@ -161,13 +161,22 @@ Migrations apply automatically on startup.
 
 ### OCI image
 
+Turnkey — Daymark and PostgreSQL together, from the repo:
+
+```bash
+docker compose pull && docker compose up -d   # ghcr.io/btafoya/daymark:latest
+docker compose up -d --build                  # or build locally from source
+```
+
+Standalone — point it at your own PostgreSQL:
+
 ```bash
 docker run -d --name daymark -p 8080:8080 \
   -e DATABASE_URL=postgres://user:pass@host/calendar \
   ghcr.io/btafoya/daymark:latest
 ```
 
-Docker is optional — the binary above runs directly on any Linux. A `docker-compose.yml` is also included to run just PostgreSQL (`docker compose up -d`, on `127.0.0.1:5433` by default).
+App on `:8080`; Postgres is reachable only inside the compose network (its `127.0.0.1:5433` host mapping is a dev convenience). Docker is optional — the binary above runs directly on any Linux.
 
 ### systemd (Debian-family distros)
 

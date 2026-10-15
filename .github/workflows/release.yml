@@ -8,32 +8,31 @@ permissions:
   contents: write
   packages: write
 
-env:
-  BIN: calendar-server
-
 jobs:
-  musl-binary:
+  release:
     runs-on: ubuntu-latest
+    # One musl build inside Docker produces both release artifacts: the
+    # tarball binary (exported via the `binary` stage) and the OCI image
+    # (pushed below, reusing the same buildx layer cache).
     steps:
       - uses: actions/checkout@v4
-      - name: Install musl target
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and export musl binary
         run: |
-          sudo apt-get update && sudo apt-get install -y musl-tools
-          rustup target add x86_64-unknown-linux-musl
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: musl-release
-      - name: Build static binary
-        run: cargo build --release --target x86_64-unknown-linux-musl --bin $BIN
+          docker buildx build \
+            --target binary \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            --output out .
       - name: Verify static linking
-        run: file target/x86_64-unknown-linux-musl/release/$BIN | grep -qE "statically linked|static-pie"
+        run: file out/daymark-server | grep -qE "statically linked|static-pie"
       - name: Smoke-test the binary
         run: |
           /usr/lib/postgresql/16/bin/initdb -D /tmp/pg -U postgres --auth=trust >/dev/null
           /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pg -o "-p 55499 -k /tmp -c listen_addresses=127.0.0.1" -l /tmp/pg.log start
           /usr/lib/postgresql/16/bin/createdb -h 127.0.0.1 -p 55499 -U postgres calendar
           DATABASE_URL=postgres://postgres@127.0.0.1:55499/calendar BIND_ADDR=127.0.0.1:18499 \
-            target/x86_64-unknown-linux-musl/release/$BIN serve &
+            out/daymark-server serve &
           for _ in $(seq 1 100); do
             curl -sf http://127.0.0.1:18499/healthz >/dev/null && exit 0
             sleep 0.2
@@ -41,8 +40,9 @@ jobs:
           exit 1
       - name: Package
         run: |
-          cp target/x86_64-unknown-linux-musl/release/$BIN daymark-server
-          tar czf daymark-${{ github.ref_name }}-x86_64-linux.tar.gz daymark-server
+          cd out
+          tar czf ../daymark-${{ github.ref_name }}-x86_64-linux.tar.gz daymark-server
+          cd ..
           sha256sum daymark-${{ github.ref_name }}-x86_64-linux.tar.gz \
             > daymark-${{ github.ref_name }}-x86_64-linux.tar.gz.sha256
       - uses: softprops/action-gh-release@v2
@@ -51,11 +51,6 @@ jobs:
             daymark-*-x86_64-linux.tar.gz
             daymark-*-x86_64-linux.tar.gz.sha256
           generate_release_notes: true
-
-  oci-image:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - id: meta
         uses: docker/metadata-action@v5
         with:
@@ -69,9 +64,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - name: Build and push OCI image
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha

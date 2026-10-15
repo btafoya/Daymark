@@ -16,5 +16,18 @@ services:
       timeout: 5s
       retries: 10
 
+  daymark:
+    image: ghcr.io/btafoya/daymark:latest
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/calendar
+      BIND_ADDR: 0.0.0.0:8080
+    ports:
+      - "8080:8080"
+
 volumes:
   pgdata:
