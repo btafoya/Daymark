@@ -16,7 +16,8 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use uuid::Uuid;
 use webauthn_rs::prelude::{
-    PasskeyAuthentication, PasskeyRegistration, PublicKeyCredential, RegisterPublicKeyCredential,
+    DiscoverableAuthentication, PasskeyAuthentication, PasskeyRegistration, PublicKeyCredential,
+    RegisterPublicKeyCredential,
 };
 
 // ============ TOTP ============
@@ -194,6 +195,8 @@ pub(crate) enum Ceremony {
         state: PasskeyAuthentication,
         stored: Vec<webauthn_rs::prelude::Passkey>,
     },
+    /// Usernameless login: the user is identified from the assertion itself.
+    Discoverable(DiscoverableAuthentication),
 }
 
 pub struct PasskeyStore {
@@ -239,7 +242,30 @@ struct RegisterFinishBody {
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
 struct LoginStartBody {
-    username_or_email: String,
+    /// Omit (or leave blank) for a usernameless login with a discoverable passkey.
+    #[serde(default)]
+    username_or_email: Option<String>,
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct PasskeyAvailableView {
+    enabled: bool,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/auth/webauthn/login/available",
+    security(()),
+    responses(
+        (status = 200, description = "whether passkey login is configured on this server", body = PasskeyAvailableView),
+    )
+)]
+async fn passkey_login_available(
+    State(AppState { passkeys, .. }): State<AppState>,
+) -> Json<PasskeyAvailableView> {
+    Json(PasskeyAvailableView {
+        enabled: passkeys.is_some(),
+    })
 }
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -347,13 +373,22 @@ async fn passkey_login_start(
     let store = passkeys
         .as_ref()
         .ok_or_else(|| AppError::internal("WebAuthn is not configured"))?;
+    let Some(name) = body.username_or_email.as_deref().filter(|n| !n.is_empty()) else {
+        let (rcr, state) = store
+            .webauthn
+            .start_discoverable_authentication()
+            .map_err(|e| AppError::bad_request(e.to_string()))?;
+        let id = store.insert(Ceremony::Discoverable(state));
+        return Ok(Json(PasskeyChallengeView {
+            challenge_id: id,
+            challenge: serde_json::to_value(&rcr).map_err(|e| AppError::internal(e.to_string()))?,
+        }));
+    };
     // Existence leaks are acceptable here only in the negative: an unknown
     // user gets an unusable challenge (no credentials) rather than a 404.
-    let user = match db::find_user_by_username(&pool, &body.username_or_email).await {
+    let user = match db::find_user_by_username(&pool, name).await {
         Ok(u) => Some(u),
-        Err(_) => db::find_user_by_email(&pool, &body.username_or_email)
-            .await
-            .ok(),
+        Err(_) => db::find_user_by_email(&pool, name).await.ok(),
     };
     let stored_rows = match user {
         Some(u) => db::auth_ext::list_webauthn_credentials(&pool, u.id).await?,
@@ -402,16 +437,34 @@ async fn passkey_login_finish(
     let store = passkeys
         .as_ref()
         .ok_or_else(|| AppError::internal("WebAuthn is not configured"))?;
-    let Ceremony::Login { state, stored } = store
+    let ceremony = store
         .take(body.challenge_id)
-        .ok_or_else(|| AppError::bad_request("unknown or expired challenge"))?
-    else {
-        return Err(AppError::bad_request("challenge is not a login"));
-    };
-    let (cred_id, updated) = store
-        .webauthn
-        .finish_authentication(&body.credential, &state, &stored)
-        .map_err(|e| AppError::bad_request(e.to_string()))?;
+        .ok_or_else(|| AppError::bad_request("unknown or expired challenge"))?;
+    let (cred_id, updated) = match ceremony {
+        Ceremony::Login { state, stored } => {
+            store
+                .webauthn
+                .finish_authentication(&body.credential, &state, &stored)
+        }
+        Ceremony::Discoverable(state) => {
+            let user_id = store
+                .webauthn
+                .identify_discoverable(&body.credential)
+                .map_err(|e| AppError::bad_request(e.to_string()))?;
+            let rows = db::auth_ext::list_webauthn_credentials(&pool, user_id).await?;
+            let stored = deserialize_passkeys(
+                &rows
+                    .iter()
+                    .map(|r| r.public_key.clone())
+                    .collect::<Vec<_>>(),
+            );
+            store
+                .webauthn
+                .finish_discoverable_authentication(&body.credential, state, &stored)
+        }
+        Ceremony::Register(_) => return Err(AppError::bad_request("challenge is not a login")),
+    }
+    .map_err(|e| AppError::bad_request(e.to_string()))?;
     let row = db::auth_ext::find_webauthn_credential(&pool, &cred_id)
         .await?
         .ok_or(AppError::unauthorized())?;
@@ -521,6 +574,7 @@ async fn delete_passkey(
         passkey_register_finish,
         passkey_login_start,
         passkey_login_finish,
+        passkey_login_available,
         list_passkeys,
         delete_passkey,
     ),
@@ -530,6 +584,7 @@ async fn delete_passkey(
         RecoveryCodesView,
         TotpStatusView,
         PasskeyChallengeView,
+        PasskeyAvailableView,
         PasskeyRegisteredView,
         PasskeyUserView,
         PasskeySessionView,
@@ -553,6 +608,10 @@ pub fn router() -> axum::Router<crate::AppState> {
         .route(
             "/api/auth/webauthn/register/finish",
             post(passkey_register_finish),
+        )
+        .route(
+            "/api/auth/webauthn/login/available",
+            get(passkey_login_available),
         )
         .route("/api/auth/webauthn/login/start", post(passkey_login_start))
         .route(

@@ -314,6 +314,7 @@ const LOGIN_PAGE: &str = concat!(
     <div class="mb-3" id="totp-row" hidden><label class="form-label" for="totp">2FA code</label>
       <input class="form-control" id="totp" inputmode="numeric" autocomplete="one-time-code"></div>
     <button class="btn btn-primary" type="submit">Sign in</button>
+    <button class="btn btn-outline-secondary mt-2" type="button" id="passkey-login" hidden>Sign in with passkey</button>
     <div id="error" class="alert alert-danger mt-3 mb-0 d-none" role="alert"></div>
   </form>
 </div>
@@ -322,6 +323,59 @@ const LOGIN_PAGE: &str = concat!(
 <script src="/assets/js/jquery-migrate.min.js"></script>
 <script>
 $(function () {
+  // Passkey login: username optional (blank = pick a discoverable passkey in the browser dialog).
+  var b64u = {
+    dec: function (v) {
+      var s = v.replace(/-/g, '+').replace(/_/g, '/');
+      while (s.length % 4) { s += '='; }
+      return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }).buffer;
+    },
+    enc: function (b) {
+      return btoa(String.fromCharCode.apply(null, new Uint8Array(b)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    },
+  };
+  function loginError(msg) { $('#error').text(msg).removeClass('d-none'); }
+  if (window.PublicKeyCredential) {
+    $.getJSON('/api/auth/webauthn/login/available').done(function (r) {
+      $('#passkey-login').prop('hidden', !r.enabled);
+    });
+  }
+  $('#passkey-login').on('click', function () {
+    $('#error').addClass('d-none');
+    $.ajax({
+      method: 'POST', url: '/api/auth/webauthn/login/start', contentType: 'application/json',
+      data: JSON.stringify({ username_or_email: $('#user').val() || null }),
+    }).then(function (resp) {
+      var pk = resp.challenge.publicKey;
+      pk.challenge = b64u.dec(pk.challenge);
+      (pk.allowCredentials || []).forEach(function (c) { c.id = b64u.dec(c.id); });
+      return navigator.credentials.get(resp.challenge).then(function (cred) {
+        return $.ajax({
+          method: 'POST', url: '/api/auth/webauthn/login/finish', contentType: 'application/json',
+          data: JSON.stringify({
+            challenge_id: resp.challenge_id,
+            credential: {
+              id: cred.id, rawId: b64u.enc(cred.rawId), type: cred.type,
+              response: {
+                authenticatorData: b64u.enc(cred.response.authenticatorData),
+                clientDataJSON: b64u.enc(cred.response.clientDataJSON),
+                signature: b64u.enc(cred.response.signature),
+                userHandle: cred.response.userHandle ? b64u.enc(cred.response.userHandle) : null,
+              },
+            },
+          }),
+        });
+      });
+    }).done(function (resp) {
+      sessionStorage.setItem('csrf', resp.csrf_token);
+      window.location.href = '/';
+    }).fail(function (err) {
+      loginError(err && err.responseJSON && err.responseJSON.error
+        || 'Passkey sign in failed' + (err && err.name ? ' (' + err.name + ').' : '.'));
+    });
+  });
+
   $('#login-form').on('submit', function (ev) {
     ev.preventDefault();
     $('#error').addClass('d-none');

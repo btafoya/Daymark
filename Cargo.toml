@@ -46,7 +46,7 @@ url = "2"
 dav-server = { version = "0.11", features = ["caldav", "carddav"] }
 xmltree = "0.12"
 uuid = { version = "1", features = ["serde", "v4"] }
-webauthn-rs = "0.5"
+webauthn-rs = { version = "0.5", features = ["conditional-ui"] } # discoverable (usernameless) login
 totp-rs = { version = "5", default-features = false, features = ["otpauth", "gen_secret"] }
 aes-gcm = "0.10"
 argon2 = { version = "0.5", features = ["std"] }

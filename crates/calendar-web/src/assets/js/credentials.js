@@ -126,6 +126,8 @@ $(function () {
       var pk = resp.challenge.publicKey;
       pk.challenge = b64uToBuf(pk.challenge);
       pk.user.id = b64uToBuf(pk.user.id);
+      // Ask for a discoverable credential so usernameless login works (server default is "discouraged").
+      pk.authenticatorSelection = Object.assign(pk.authenticatorSelection || {}, { residentKey: 'preferred' });
       (pk.excludeCredentials || []).forEach(function (c) { c.id = b64uToBuf(c.id); });
       navigator.credentials.create(resp.challenge).then(function (cred) {
         return api('POST', '/api/auth/webauthn/register/finish', {

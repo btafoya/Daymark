@@ -94,13 +94,62 @@ impl PasskeyManager {
             .webauthn
             .finish_passkey_authentication(response, state)
             .map_err(|e| WebauthnManagerError::Ceremony(e.to_string()))?;
+        Self::reconcile(&result, stored)
+    }
+
+    /// Begins a usernameless login: no allow-list, the authenticator offers
+    /// its discoverable credentials. webauthn-rs forces conditional (autofill)
+    /// mediation on this flow; cleared so a button click gets the modal chooser.
+    pub fn start_discoverable_authentication(
+        &self,
+    ) -> Result<(RequestChallengeResponse, DiscoverableAuthentication), WebauthnManagerError> {
+        let (mut rcr, state) = self
+            .webauthn
+            .start_discoverable_authentication()
+            .map_err(|e| WebauthnManagerError::Ceremony(e.to_string()))?;
+        rcr.mediation = None;
+        Ok((rcr, state))
+    }
+
+    /// Extracts the user id the authenticator asserted (the Uuid given at registration).
+    pub fn identify_discoverable(
+        &self,
+        response: &PublicKeyCredential,
+    ) -> Result<Uuid, WebauthnManagerError> {
+        self.webauthn
+            .identify_discoverable_authentication(response)
+            .map(|(user_id, _)| user_id)
+            .map_err(|e| WebauthnManagerError::Ceremony(e.to_string()))
+    }
+
+    /// Same return contract as `finish_authentication`; `stored` must be the
+    /// identified user's passkeys.
+    pub fn finish_discoverable_authentication(
+        &self,
+        response: &PublicKeyCredential,
+        state: DiscoverableAuthentication,
+        stored: &[Passkey],
+    ) -> Result<(Vec<u8>, Vec<u8>), WebauthnManagerError> {
+        let keys: Vec<DiscoverableKey> = stored.iter().map(DiscoverableKey::from).collect();
+        let result = self
+            .webauthn
+            .finish_discoverable_authentication(response, state, &keys)
+            .map_err(|e| WebauthnManagerError::Ceremony(e.to_string()))?;
+        Self::reconcile(&result, stored)
+    }
+
+    /// Matched credential id plus the updated serialization (empty when unchanged).
+    fn reconcile(
+        result: &AuthenticationResult,
+        stored: &[Passkey],
+    ) -> Result<(Vec<u8>, Vec<u8>), WebauthnManagerError> {
         let matched = stored
             .iter()
             .position(|pk| pk.cred_id().as_ref() == result.cred_id().as_ref())
             .map(|idx| stored[idx].clone());
         let updated_json = matched
             .map(|mut pk| {
-                let changed = pk.update_credential(&result);
+                let changed = pk.update_credential(result);
                 if changed == Some(false) {
                     return Ok(Vec::new()); // unchanged: nothing to re-store
                 }

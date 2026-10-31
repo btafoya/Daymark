@@ -529,6 +529,7 @@ mod tests {
             ("/api/auth/webauthn/register/finish", "post"),
             ("/api/auth/webauthn/login/start", "post"),
             ("/api/auth/webauthn/login/finish", "post"),
+            ("/api/auth/webauthn/login/available", "get"),
             ("/api/auth/webauthn", "get"),
             ("/api/auth/webauthn/{id}", "delete"),
         ] {
